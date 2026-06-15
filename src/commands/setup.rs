@@ -289,3 +289,98 @@ fn parse_ester(s: &str) -> Result<InjectionEster> {
         _ => Err(anyhow!("Invalid ester. Use ev, ec, ee, eu, or e2.")),
     }
 }
+
+#[derive(Debug)]
+pub struct DosingResult {
+    pub ester: InjectionEster,
+    pub estimated_dose_mg: f64,
+    pub predicted_peak_pg_ml: f64,
+    pub predicted_trough_pg_ml: f64,
+    pub interval_days: f64,
+    pub peak_trough_ratio: f64,
+}
+
+///Compute steady-state concentration for a nominal 1.0mg dose.
+fn calculate_nominal_concentration(t: f64, interval: f64, ka: f64, ke: f64, scale: f64) -> f64 {
+    let e_ke_tau = (-ke * interval).exp();
+    let e_ka_tau = (-ka * interval).exp();
+    let term1 = (-ke * t).exp() / (1.0 - e_ke_tau);
+    let term2 = (-ka * t).exp() / (1.0 - e_ka_tau);
+    (ka / (ka - ke)) * scale * (term1 - term2)
+}
+
+/// Compute the peak-to-trough ratio for intervals.
+fn evaluate_interval_ratio(interval: f64, ka: f64, ke: f64, scale: f64) -> f64 {
+    let num = ka * (1.0 - (-ke * interval).exp());
+    let den = ke * (1.0 - (-ka * interval).exp());
+    let t_max = (1.0 / (ka - ke)) * (num / den).ln();
+    let bounded_t_max = t_max.clamp(0.0, interval);
+
+    let peak = calculate_nominal_concentration(bounded_t_max, interval, ka, ke, scale);
+    let trough = calculate_nominal_concentration(0.0, interval, ka, ke, scale);
+
+    if trough > 0.0 { peak / trough } else { f64::MAX }
+}
+
+/// Selects the best practical interval based on the ester's half-life.
+/// Targets an ideal peak/trough ratio <= 2.2 for smooth levels, defaulting up or down gracefully.
+fn optimize_interval(ka: f64, ke: f64, scale: f64) -> f64 {
+    let practical_intervals = [1.0, 3.5, 5.0, 7.0, 14.0, 28.0];
+    let target_max_ratio = 2.2;
+    let mut best_interval = practical_intervals[0];
+
+    for &interval in practical_intervals.iter() {
+        let ratio = evaluate_interval_ratio(interval, ka, ke, scale);
+        if ratio <= target_max_ratio {
+            best_interval = interval;
+        } else {
+            if interval == practical_intervals[0] {
+                return interval;
+            }
+            break;
+        }
+    }
+    best_interval
+}
+
+pub fn estimate_optimized_transition_dose(
+    ester: InjectionEster,
+    desired_average: f64,
+    accuracy: f64,
+) -> Result<DosingResult, &'static str> {
+    if desired_average <= 0.0 || accuracy <= 0.0 {
+        return Err("Desired average level and accuracy must be positive values.");
+    }
+
+    let params = ester.get_data();
+    let ke = 2.0_f64.ln() / params.half_life_days;
+    let mut ka = 2.0_f64.ln() / params.absorption_half_life_days;
+
+    if (ka - ke).abs() < 1e-6 { ka += 1e-5; }
+
+    let tau = optimize_interval(ka, ke, params.clearance_scale);
+
+    let calculated_dose = (desired_average * ke * tau) / params.clearance_scale;
+
+    let num = ka * (1.0 - (-ke * tau).exp());
+    let den = ke * (1.0 - (-ka * tau).exp());
+    let t_max = ((1.0 / (ka - ke)) * (num / den).ln()).clamp(0.0, tau);
+
+    let peak = calculate_nominal_concentration(t_max, tau, ka, ke, params.clearance_scale) * calculated_dose;
+    let trough = calculate_nominal_concentration(0.0, tau, ka, ke, params.clearance_scale) * calculated_dose;
+    let ratio = if trough > 0.0 { peak / trough } else { 0.0 };
+
+    let calculated_avg = (params.clearance_scale * calculated_dose) / (ke * tau);
+    if (calculated_avg - desired_average).abs() > accuracy {
+        return Err("Analytical convergence failed to satisfy accuracy constraints.");
+    }
+
+    Ok(DosingResult {
+        ester,
+        estimated_dose_mg: calculated_dose,
+        predicted_peak_pg_ml: peak,
+        predicted_trough_pg_ml: trough,
+        interval_days: tau,
+        peak_trough_ratio: ratio,
+    })
+}

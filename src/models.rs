@@ -31,34 +31,34 @@ pub enum InjectionEster {
 impl InjectionEster {
     pub fn get_data(&self) -> EsterData {
         match self {
-            Self::Benzoate => EsterData { s_name: "EB", dose_form: IngestionMethod::Injection, half_life_days: 3.5, peak_time_days: 0.5, k_absorption: 1.505, k_elimination: 0.354 },
-            Self::Valerate => EsterData { s_name: "EV", dose_form: IngestionMethod::Injection, half_life_days: 3.5, peak_time_days: 1.2, k_absorption: 0.925, k_elimination: 0.165 },
-            Self::Cypionate => EsterData { s_name: "EC", dose_form: IngestionMethod::Injection, half_life_days: 7.5, peak_time_days: 2.0, k_absorption: 0.257, k_elimination: 0.08 },
-            Self::CypionateSuspension => EsterData { s_name: "ECS", dose_form: IngestionMethod::Injection, half_life_days: 9.0, peak_time_days: 2.0, k_absorption: 0.57, k_elimination: 0.113 },
-            Self::Enanthate => EsterData { s_name: "EE", dose_form: IngestionMethod::Injection, half_life_days: 6.55, peak_time_days: 2.0, k_absorption: 1.51, k_elimination: 0.12 },
-            Self::Undecylate => EsterData { s_name: "EU", dose_form: IngestionMethod::Injection, half_life_days: 20.0, peak_time_days: 7.0, k_absorption: 0.035, k_elimination: 0.029 },
-            Self::Estradiol => EsterData { s_name: "E2", dose_form: IngestionMethod::Oral, half_life_days: 0.5, peak_time_days: 0.1, k_absorption: 36.5, k_elimination: 1.135 },
-            _ => EsterData { s_name: "Unknown", dose_form: IngestionMethod::Injection, half_life_days: 5.0, peak_time_days: 1.0, k_absorption: 0.0, k_elimination: 0.0 },
+            Self::Benzoate => EsterData { s_name: "EB", dose_form: IngestionMethod::Injection, half_life_days: 2.0, absorption_half_life_days: 0.3, clearance_scale: 90.0 },
+            Self::Valerate => EsterData { s_name: "EV", dose_form: IngestionMethod::Injection, half_life_days: 3.5, absorption_half_life_days: 0.6, clearance_scale: 75.0 },
+            Self::Cypionate => EsterData { s_name: "EC", dose_form: IngestionMethod::Injection, half_life_days: 8.0, absorption_half_life_days: 2.0, clearance_scale: 60.0},
+            Self::CypionateSuspension => EsterData { s_name: "ECS", dose_form: IngestionMethod::Injection, half_life_days: 7.0, absorption_half_life_days: 1.0, clearance_scale: 62.0 },
+            Self::Enanthate => EsterData { s_name: "EE", dose_form: IngestionMethod::Injection, half_life_days: 6.5, absorption_half_life_days: 1.5, clearance_scale: 65.0 },
+            Self::Undecylate => EsterData { s_name: "EU", dose_form: IngestionMethod::Injection, half_life_days: 20.0, absorption_half_life_days: 4.0, clearance_scale: 45.0},
+            Self::Estradiol => EsterData { s_name: "E2", dose_form: IngestionMethod::Oral, half_life_days: 0.5, absorption_half_life_days: 0.0, clearance_scale: 0.0 },
+            _ => EsterData { s_name: "Unknown", dose_form: IngestionMethod::Injection, half_life_days: 5.0, absorption_half_life_days: 0.0, clearance_scale: 0.0 },
         }
     }
+}
 
-    pub fn get_intervals(&self) -> Vec<f32> {
-        match self {
-            Self::Valerate => vec![3.5, 5.0],
-            Self::Enanthate | Self::Cypionate => vec![5.0, 7.0, 10.0],
-            Self::Undecylate => vec![7.0, 14.0, 21.0],
-            _ => vec![7.0],
-        }
-    }
+#[derive(Debug)]
+pub struct DosingResult {
+    pub ester: InjectionEster,
+    pub estimated_dose_mg: f64,
+    pub predicted_peak_pg_ml: f64,
+    pub predicted_trough_pg_ml: f64,
+    pub interval_days: f64,
+    pub peak_trough_ratio: f64,
 }
 
 pub struct EsterData {
     pub s_name: &'static str,
     pub dose_form: IngestionMethod,
-    pub half_life_days: f32,
-    pub peak_time_days: f32,
-    pub k_absorption: f32,
-    pub k_elimination: f32,
+    pub(crate) half_life_days: f64,
+    pub(crate) absorption_half_life_days: f64,
+    pub(crate) clearance_scale: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
